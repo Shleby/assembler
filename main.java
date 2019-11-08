@@ -46,10 +46,11 @@ public class main {
         for (int i = 0; i < instructions.size(); i++) {
             lineTracker++;
             // Translate A instructions
-            if (instructions.get(i).startsWith("@")) {
+            String newInst = instructions.get(i).replaceAll("\\s+", "");
+            if (newInst.startsWith("@")) {
                 // sending the a instruction to be converted to binary and written to .hack file
                 // Cut off the @ symbol
-                String newInst = instructions.get(i).substring(1);
+                newInst = newInst.substring(1);
                 // jump address
                 if (firstPassTable.containsKey("(" + newInst + ")")) {
                     int decimal = firstPassTable.get("(" + newInst + ")");
@@ -99,7 +100,7 @@ public class main {
                 }
                 writer.write(bits);
                 writer.write(System.getProperty("line.separator"));
-            } else if (instructions.get(i).startsWith("(")) {
+            } else if (newInst.startsWith("(")) {
                 continue;
             } else {
 
@@ -107,28 +108,28 @@ public class main {
                 cBit = "";
                 jBit = "";
                 cInstruct = "";
-                eql = instructions.get(i).indexOf("=");
-                semi = instructions.get(i).indexOf(";");
+                eql = newInst.indexOf("=");
+                semi = newInst.indexOf(";");
 
                 // d=c:j
                 if (eql != -1 && semi != -1) {
-                    dBit = instructions.get(i).substring(0, eql);
-                    cBit = instructions.get(i).substring(eql + 1, semi);
-                    jBit = instructions.get(i).substring(semi + 1);
+                    dBit = newInst.substring(0, eql);
+                    cBit = newInst.substring(eql + 1, semi);
+                    jBit = newInst.substring(semi + 1);
                 }
                 // c:j
                 else if (eql == -1 && semi != -1) {
-                    cBit = instructions.get(i).substring(0, semi);
-                    jBit = instructions.get(i).substring(semi + 1);
+                    cBit = newInst.substring(0, semi);
+                    jBit = newInst.substring(semi + 1);
                 }
                 // d=c
                 else if (eql != -1 && semi == -1) {
-                    dBit = instructions.get(i).substring(0, eql);
-                    cBit = instructions.get(i).substring(eql + 1);
+                    dBit = newInst.substring(0, eql);
+                    cBit = newInst.substring(eql + 1);
                 }
                 // d
                 else {
-                    d = instructions.get(i);
+                    d = newInst;
                 }
 
                 if (DBitsTable.containsKey(dBit) && (A1BitsTable.containsKey(cBit) || A0BitsTable.containsKey(cBit))
