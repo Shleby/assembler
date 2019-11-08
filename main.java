@@ -1,34 +1,32 @@
-import java.io.*;
-import java.util.*;
-import java.util.Scanner;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.BufferedReader;
 import java.util.Hashtable;
+import java.util.Scanner;
 
 public class main {
+    public static Hashtable<String, Integer> symbolTable = new Hashtable<String, Integer>();
+    public static Hashtable<String, String> A0BitsTable = new Hashtable<String, String>();
+    public static Hashtable<String, String> A1BitsTable = new Hashtable<String, String>();
+    public static Hashtable<String, String> DBitsTable = new Hashtable<String, String>();
+    public static Hashtable<String, String> JBitsTable = new Hashtable<String, String>();
+
     public static void main(String[] args) throws IOException {
         // Creating a scanner to get file input (assembly instructions) from user
+        System.out.println(
+                "Type in file path. In visual studio you can just right click a .asm file in the test files folder and select copy path (shift alt c). This will copy it to your clipboard so you can just paste it below.");
         Scanner input = new Scanner(System.in);
 
-        // Storing assembly instructions as a string
+        // Storing filename as a string
         String fileName = input.next();
 
-        // FIRST PASS
-        ArrayList<String> firstPass = new ArrayList<String>();
-        firstPass = fileHandlesOpening(fileName);
-
-        // Search through all of the file for lables, etc
-        Hashtable<String, Integer> table = new Hashtable<String, Integer>();
-
-        for (int i = 0; i < firstPass.size(); i++) {
-            if (firstPass.get(i).startsWith("@")) {
-                if (!isNumberic(firstPass.get(i))) {
-                    table.put(firstPass.get(i), i);
-                }
-            }
+        if (!fileName.contains(".asm")) {
+            input.close();
+            throw new IllegalArgumentException("Please submit a file with a .asm extension.");
         }
-
-        /* SECOND PASS */
 
         // Creates file and the writer to write to the file
         String hackFile = createNewFile(fileName);
@@ -38,244 +36,214 @@ public class main {
         ArrayList<String> instructions = new ArrayList<String>();
         instructions = fileHandlesOpening(fileName);
 
+        Hashtable<String, Integer> firstPassTable = firstPass(instructions);
+        Hashtable<String, Integer> holder = new Hashtable<String, Integer>();
+
+        String bits, a, d, cInstruct, dBit, cBit, jBit = "";
+        int eql, semi = -1;
+        int lineTracker = 0;
+
         for (int i = 0; i < instructions.size(); i++) {
-            // Translate A instructions into binary machine code
-            // begining with a 0 bit followed by 15 bitss
+            lineTracker++;
+            // Translate A instructions
             if (instructions.get(i).startsWith("@")) {
                 // sending the a instruction to be converted to binary and written to .hack file
-                String bits = handleAInstruct(instructions.get(i), table);
+                // Cut off the @ symbol
+                String newInst = instructions.get(i).substring(1);
+                // jump address
+                if (firstPassTable.containsKey("(" + newInst + ")")) {
+                    int decimal = firstPassTable.get("(" + newInst + ")");
+                    bits = Integer.toBinaryString(decimal);
+                    while (bits.length() < 16) {
+                        bits = "0" + bits;
+                    }
+                }
+                // Check if a value
+                else if (newInst.matches("[0-9]+")) {
+                    // Convert to an int for decimal->binary conversion
+                    int decimal = Integer.parseInt(newInst);
+                    // Convert back to a string and add on all the remaining 0's
+                    bits = Integer.toBinaryString(decimal);
+                    while (bits.length() < 16) {
+                        bits = "0" + bits;
+                    }
+                }
+                // else this is a user symbol
+                else {
+                    if (symbolTable.containsKey(newInst)) {
+                        int decimal = symbolTable.get(newInst);
+                        bits = Integer.toBinaryString(decimal);
+                        while (bits.length() < 16) {
+                            bits = "0" + bits;
+                        }
+                    } else {
+                        if (holder.containsKey(newInst)) {
+                            int decimal = holder.get(newInst);
+                            bits = Integer.toBinaryString(decimal);
+                            while (bits.length() < 16) {
+                                bits = "0" + bits;
+                            }
+                        } else {
+                            int address = holder.size() + 16;
+                            if (address >= 16384) {
+                                throw new IllegalStateException("Out of Memory. Line #" + lineTracker);
+                            }
+
+                            holder.put(newInst, address);
+                            bits = Integer.toBinaryString(address);
+                            while (bits.length() < 16) {
+                                bits = "0" + bits;
+                            }
+                        }
+                    }
+                }
                 writer.write(bits);
                 writer.write(System.getProperty("line.separator"));
+            } else if (instructions.get(i).startsWith("(")) {
+                continue;
             } else {
-                String CInstruct = handleCInstruct(instructions.get(i));
-                writer.write(CInstruct);
+
+                dBit = "";
+                cBit = "";
+                jBit = "";
+                cInstruct = "";
+                eql = instructions.get(i).indexOf("=");
+                semi = instructions.get(i).indexOf(";");
+
+                // d=c:j
+                if (eql != -1 && semi != -1) {
+                    dBit = instructions.get(i).substring(0, eql);
+                    cBit = instructions.get(i).substring(eql + 1, semi);
+                    jBit = instructions.get(i).substring(semi + 1);
+                }
+                // c:j
+                else if (eql == -1 && semi != -1) {
+                    cBit = instructions.get(i).substring(0, semi);
+                    jBit = instructions.get(i).substring(semi + 1);
+                }
+                // d=c
+                else if (eql != -1 && semi == -1) {
+                    dBit = instructions.get(i).substring(0, eql);
+                    cBit = instructions.get(i).substring(eql + 1);
+                }
+                // d
+                else {
+                    d = instructions.get(i);
+                }
+
+                if (DBitsTable.containsKey(dBit) && (A1BitsTable.containsKey(cBit) || A0BitsTable.containsKey(cBit))
+                        && JBitsTable.containsKey(jBit)) {
+                    if (A0BitsTable.containsKey(cBit)) {
+                        a = "0";
+                        cBit = A0BitsTable.get(cBit);
+                    } else {
+                        a = "1";
+                        cBit = A1BitsTable.get(cBit);
+                    }
+                    cInstruct = "111" + a + cBit + DBitsTable.get(dBit) + JBitsTable.get(jBit);
+                }
+                writer.write(cInstruct);
                 writer.write(System.getProperty("line.separator"));
             }
         }
         // Closes the Scanner and Writer
         writer.close();
         input.close();
+        System.out.println("Operations complete... .hack was written successfully");
     }
 
-    public static String handleCInstruct(String instruction) {
-        StringBuilder result = new StringBuilder();
-        result.append("111");
-        int i = 0;
+    static {
+        // put all predefined symbols into a Hashtable
+        symbolTable.put("SP", 0);
+        symbolTable.put("LCL", 1);
+        symbolTable.put("ARG", 2);
+        symbolTable.put("THIS", 3);
+        symbolTable.put("THAT", 4);
+        symbolTable.put("R0", 0);
+        symbolTable.put("R1", 1);
+        symbolTable.put("R2", 2);
+        symbolTable.put("R3", 3);
+        symbolTable.put("R4", 4);
+        symbolTable.put("R5", 5);
+        symbolTable.put("R6", 6);
+        symbolTable.put("R7", 7);
+        symbolTable.put("R8", 8);
+        symbolTable.put("R9", 9);
+        symbolTable.put("R10", 10);
+        symbolTable.put("R11", 11);
+        symbolTable.put("R12", 12);
+        symbolTable.put("R13", 13);
+        symbolTable.put("R14", 14);
+        symbolTable.put("R15", 15);
+        symbolTable.put("SCREEN", 16384);
+        symbolTable.put("KBD", 24576);
 
-        /*
-         * finds the value of dest.toString().equalsIgnoreCase() and locates equal sign
-         * or semi colon
-         */
-        StringBuilder dest = new StringBuilder();
-        while (i < instruction.length()) {
-            char inst = instruction.charAt(i);
-            if (inst == '=') {
-                break;
-            } else if (inst == ';') {
-                break;
-            }
-            dest.append(inst);
-            i++;
-        }
+        // When a=0
+        A0BitsTable.put("0", "101010");
+        A0BitsTable.put("1", "111111");
+        A0BitsTable.put("-1", "111010");
+        A0BitsTable.put("D", "001100");
+        A0BitsTable.put("A", "110000");
+        A0BitsTable.put("!D", "001101");
+        A0BitsTable.put("!A", "110001");
+        A0BitsTable.put("-D", "001111");
+        A0BitsTable.put("-A", "110011");
+        A0BitsTable.put("D+1", "011111");
+        A0BitsTable.put("A+1", "110111");
+        A0BitsTable.put("D-1", "001110");
+        A0BitsTable.put("A-1", "110010");
+        A0BitsTable.put("D+A", "000010");
+        A0BitsTable.put("D-A", "010011");
+        A0BitsTable.put("A-D", "000111");
+        A0BitsTable.put("D&A", "000000");
+        A0BitsTable.put("D|A", "010101");
 
-        StringBuilder comp = new StringBuilder();
-        while (i < instruction.length()) {
-            char compInst = instruction.charAt(i);
-            comp.append(compInst);
-            i++;
-        }
+        // When a=1
+        A1BitsTable.put("M", "110000");
+        A1BitsTable.put("!M", "110001");
+        A1BitsTable.put("-M", "110011");
+        A1BitsTable.put("M+1", "110111");
+        A1BitsTable.put("M-1", "110010");
+        A1BitsTable.put("D+M", "000010");
+        A1BitsTable.put("D-M", "010011");
+        A1BitsTable.put("M-D", "000111");
+        A1BitsTable.put("D&M", "000000");
+        A1BitsTable.put("D|M", "010101");
 
-        // delete the ; or = while keeping a string containing it
-        String totalComp = comp.toString();
-        comp.delete(0, 1);
+        // put all dst posibilities into a Hashtable
+        DBitsTable.put("", "000");
+        DBitsTable.put("M", "001");
+        DBitsTable.put("D", "010");
+        DBitsTable.put("MD", "011");
+        DBitsTable.put("A", "100");
+        DBitsTable.put("AM", "101");
+        DBitsTable.put("AD", "110");
+        DBitsTable.put("AMD", "111");
 
-        // Comp value
-        if (totalComp.contains("=")) {
-            if (comp.toString().equalsIgnoreCase("D|A")) {
-                result.append("0010101");
-            } else if (comp.toString().equalsIgnoreCase("D&A")) {
-                result.append("0000000");
-            } else if (comp.toString().equalsIgnoreCase("A-D")) {
-                result.append("0000111");
-            } else if (comp.toString().equalsIgnoreCase("D-A")) {
-                result.append("0010011");
-            } else if (comp.toString().equalsIgnoreCase("D+A")) {
-                result.append("0000010");
-            } else if (comp.toString().equalsIgnoreCase("A-1")) {
-                result.append("0110010");
-            } else if (comp.toString().equalsIgnoreCase("D-1")) {
-                result.append("0001110");
-            } else if (comp.toString().equalsIgnoreCase("A+1")) {
-                result.append("0110111");
-            } else if (comp.toString().equalsIgnoreCase("D+1")) {
-                result.append("0011111");
-            } else if (comp.toString().equalsIgnoreCase("D|M")) {
-                result.append("1010101");
-            } else if (comp.toString().equalsIgnoreCase("D&M")) {
-                result.append("1000000");
-            } else if (comp.toString().equalsIgnoreCase("M-D")) {
-                result.append("1000111");
-            } else if (comp.toString().equalsIgnoreCase("D-M")) {
-                result.append("1010011");
-            } else if (comp.toString().equalsIgnoreCase("D+M")) {
-                result.append("1000010");
-            } else if (comp.toString().equalsIgnoreCase("M-1")) {
-                result.append("1110010");
-            } else if (comp.toString().equalsIgnoreCase("M+1")) {
-                result.append("1110111");
-            } else if (comp.toString().equalsIgnoreCase("-M")) {
-                result.append("1110011");
-            } else if (comp.toString().equalsIgnoreCase("-A")) {
-                result.append("0110011");
-            } else if (comp.toString().equalsIgnoreCase("-D")) {
-                result.append("0001111");
-            } else if (comp.toString().equalsIgnoreCase("!A")) {
-                result.append("0110001");
-            } else if (comp.toString().equalsIgnoreCase("!M")) {
-                result.append("1110001");
-            } else if (comp.toString().equalsIgnoreCase("!D")) {
-                result.append("0001101");
-            } else if (comp.toString().equalsIgnoreCase("A")) {
-                result.append("0110000");
-            } else if (comp.toString().equalsIgnoreCase("M")) {
-                result.append("1110000");
-            } else if (comp.toString().equalsIgnoreCase("D")) {
-                result.append("0001100");
-            } else if (comp.toString().equalsIgnoreCase("-1")) {
-                result.append("0111010");
-            } else if (comp.toString().equalsIgnoreCase("1")) {
-                result.append("0111111");
-            } else if (comp.toString().equalsIgnoreCase("0")) {
-                result.append("0101010");
-            }
-        }
+        // put all jmp posibilities into a Hashtable
+        JBitsTable.put("", "000");
+        JBitsTable.put("JGT", "001");
+        JBitsTable.put("JEQ", "010");
+        JBitsTable.put("JGE", "011");
+        JBitsTable.put("JLT", "100");
+        JBitsTable.put("JNE", "101");
+        JBitsTable.put("JLE", "110");
+        JBitsTable.put("JMP", "111");
+    }
 
-        // Dest value
-        // whats the case it wouldn't be stored
-        if (dest.toString().equalsIgnoreCase(null)) {
-            result.append("000");
-        } else if (dest.toString().equalsIgnoreCase("AMD")) {
-            result.append("111");
-        } else if (dest.toString().equalsIgnoreCase("MD") || dest.toString().equalsIgnoreCase("DM")) {
-            result.append("011");
-        } else if (dest.toString().equalsIgnoreCase("AM") || dest.toString().equalsIgnoreCase("MA")) {
-            result.append("101");
-        } else if (dest.toString().equalsIgnoreCase("AD") || dest.toString().equalsIgnoreCase("DA")) {
-            result.append("110");
-        } else if (dest.toString().equalsIgnoreCase("M")) {
-            result.append("001");
-        } else if (dest.toString().equalsIgnoreCase("D")) {
-            result.append("010");
-        } else if (dest.toString().equalsIgnoreCase("A")) {
-            result.append("100");
-        } else {
-            result.append("000");
-        }
-
-        // Jump value
-        if (totalComp.contains(";")) {
-            StringBuilder jump = new StringBuilder();
-            if (dest.toString().equalsIgnoreCase("0")) {
-                jump.append("1110101010000111");
-                return jump.toString();
+    public static Hashtable<String, Integer> firstPass(ArrayList<String> instructions) {
+        Hashtable<String, Integer> table = new Hashtable<String, Integer>();
+        int counter = 0;
+        for (int i = 0; i < instructions.size(); i++) {
+            if (instructions.get(i).startsWith("(") && instructions.get(i).endsWith(")")) {
+                counter++;
+                table.put(instructions.get(i), counter - 1);
             } else {
-                jump.append("1110001100000");
-                if (comp.toString().equalsIgnoreCase("JGT")) {
-                    jump.append("001");
-                } else if (comp.toString().equalsIgnoreCase("JEQ")) {
-                    jump.append("010");
-                } else if (comp.toString().equalsIgnoreCase("JGE")) {
-                    jump.append("011");
-                } else if (comp.toString().equalsIgnoreCase("JLT")) {
-                    jump.append("100");
-                } else if (comp.toString().equalsIgnoreCase("JNE")) {
-                    jump.append("101");
-                } else if (comp.toString().equalsIgnoreCase("JLE")) {
-                    jump.append("110");
-                } else if (comp.toString().equalsIgnoreCase("JMP")) {
-                    jump.append("111");
-                }
-                return jump.toString();
+                counter++;
             }
         }
-        result.append("000");
-        return result.toString();
-    }
 
-    public static boolean isNumberic(String firstPass) {
-        String newInst = firstPass.substring(1);
-        try {
-            int bo = Integer.parseInt(newInst);
-        } catch (NumberFormatException | NullPointerException nfe) {
-            return false;
-        }
-        return true;
-    }
-
-    public static String handleAInstruct(String instruction, Hashtable table) {
-        if (!isNumberic(instruction)) {
-            if (instruction == "R0") {
-                return "0";
-            } else if (instruction == "R1") {
-                return "1";
-            } else if (instruction == "R2") {
-                return "2";
-            } else if (instruction == "R3") {
-                return "3";
-            } else if (instruction == "R4") {
-                return "4";
-            } else if (instruction == "R5") {
-                return "5";
-            } else if (instruction == "R6") {
-                return "6";
-            } else if (instruction == "R7") {
-                return "7";
-            } else if (instruction == "R8") {
-                return "8";
-            } else if (instruction == "R9") {
-                return "9";
-            } else if (instruction == "R10") {
-                return "10";
-            } else if (instruction == "R11") {
-                return "11";
-            } else if (instruction == "R12") {
-                return "12";
-            } else if (instruction == "R13") {
-                return "13";
-            } else if (instruction == "R14") {
-                return "14";
-            } else if (instruction == "R15") {
-                return "15";
-            } else if (instruction == "SCREEN") {
-                return "16384";
-            } else if (instruction == "KBD") {
-                return "24576";
-            } else if (instruction == "SP") {
-                return "0";
-            } else if (instruction == "LCL") {
-                return "1";
-            } else if (instruction == "ARG") {
-                return "2";
-            } else if (instruction == "THIS") {
-                return "3";
-            } else if (instruction == "THAT") {
-                return "4";
-            }
-            Object value = table.get(instruction);
-            String result = value.toString();
-            return result;
-        } else {
-            // Cut off the @ symbol
-            String newInst = instruction.substring(1);
-            // Convert to an int for decimal->binary conversion
-            int decimal = Integer.parseInt(newInst);
-            // Convert back to a string and add on all the remaining 0's
-            String bits = Integer.toBinaryString(decimal);
-            while (bits.length() < 16) {
-                bits = "0" + bits;
-            }
-            return bits;
-        }
+        return table;
     }
 
     public static String createNewFile(String fileName) {
@@ -300,7 +268,7 @@ public class main {
             reader = new BufferedReader(new FileReader(fileName));
             String line = reader.readLine();
             while (line != null) {
-                if (!line.isEmpty() || !line.isBlank()) {
+                if (!line.isEmpty()) {
                     if (line.startsWith("//") == false) {
                         instructions.add(line);
                     }
