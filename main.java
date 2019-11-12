@@ -237,8 +237,7 @@ public class main {
         int counter = 0;
         for (int i = 0; i < instructions.size(); i++) {
             if (instructions.get(i).startsWith("(") && instructions.get(i).endsWith(")")) {
-                counter++;
-                table.put(instructions.get(i), counter - 1);
+                table.put(instructions.get(i), counter);
             } else {
                 counter++;
             }
@@ -271,7 +270,13 @@ public class main {
             while (line != null) {
                 if (!line.isEmpty()) {
                     if (line.startsWith("//") == false) {
-                        instructions.add(line);
+                        if (line.contains("//")) {
+                            int offset = line.indexOf("//");
+                            line = line.substring(0, offset);
+                            instructions.add(line);
+                        } else {
+                            instructions.add(line);
+                        }
                     }
                 }
                 line = reader.readLine();
